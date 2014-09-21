@@ -1,7 +1,7 @@
 CC = gcc
-FILES = src/main.c
+FILES = src/main.c src/scanner.c
 OUT_EXE = superPi8 
-LIBS = -lncurses
+LIBS = -lncurses -lnewt
 
 
 build: $(FILES)

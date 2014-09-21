@@ -1,25 +1,11 @@
 #include <ncurses.h>
 #include <stdlib.h>
+#include "scanner.h"
 
 void mode_quit(){
     refresh();
     endwin();
     exit(0);
-}
-
-
-void mode_scan(){
-    
-}
-
-
-void mode_move(){
-
-}
-
-
-void mode_step(){
-
 }
 
 
