@@ -2,7 +2,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-   
+#include <time.h>
+#include "utils.c"
+
+
 
 typedef struct Option {
     char* name;
@@ -76,14 +79,13 @@ void mode_scan(){
         }
 
         if (validate_user_input(option)){
+            start_scanner(option);
             newtFormDestroy(form);
             return;
         }
         
         haserror = 1;
     }
-
-
 }
 
 int validate_user_input(Option option){
@@ -105,49 +107,47 @@ int validate_user_input(Option option){
     return 1;
 }
 
+void start_scanner(Option option){
 
-int is_integer(char* input){
-    while (*input){
-        if(!isdigit(*input))
-            return 0;
-        input++;
+    int cols, rows;
+
+    newtCls();
+    newtInit();
+
+
+    newtGetScreenSize(&cols, &rows);
+    char title[120];
+    strcpy(title, "Scanning: ");
+    strcat(title, option.name);
+    newtOpenWindow((cols - 72)/2, 5, 72, 20, title);
+
+    newtComponent form = newtForm(NULL, NULL, 0);
+    newtComponent scale_entry = newtScale(1, 17, 70, 10);
+
+    newtComponent uptime_entry = newtTextbox(1, 1, 70, 10, NEWT_FLAG_WRAP);
+
+    newtFormAddComponents(form, scale_entry, uptime_entry, NULL);
+
+
+    time_t uptime = time(NULL);
+
+    int i;
+    for(i = 1; i< 10; i++){
+        newtScaleSet(scale_entry, i);
+        char hr_uptime[120];
+        char output[50];
+        time_t uptime_now = time(NULL);
+        time_formatting((double)(uptime_now - uptime), output);
+        snprintf(hr_uptime, 120, "Uptime: %s", output);
+        newtTextboxSetText(uptime_entry, hr_uptime);
+        newtDrawForm(form);
+	    newtRefresh();
+        sleep(1);
     }
-    return 1;
+    
+    newtFormDestroy(form);
+    newtFinished();
 }
-
-
-/* return array [{1=error,2=now,3=timer}, hour, minute]
- * 
-*/
-void split_time(char* input, int result[]){
-    result[0] = 1;
-    result[1] = 0;
-    result[2] = 0;
-    char * hour;
-    char * minute;
-    hour = strtok( input, ":" );
-    minute = strtok(NULL, ":" );
-    if (strcmp(hour, "now")==0){
-        result[0] = 2;
-        return;
-    }
-    if (minute == NULL ||
-        hour == NULL ||
-        !is_integer(minute) ||
-        !is_integer(hour) ||
-        atoi(minute) < 0 ||
-        atoi(minute) > 59 ||
-        atoi(hour) < 0 ||
-        atoi(hour) > 23){
-        return;
-    }
-
-    result[0] = 3;
-    result[1] = atoi(minute);
-    result[2] = atoi(hour);
-}
-
-
 
 void mode_move(){
     
