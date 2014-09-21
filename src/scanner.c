@@ -90,10 +90,10 @@ int validate_user_input(Option option){
     if (strlen(option.name) < 1 || strlen(option.name) > 100)
         return 0;
     
-    if (!is_integer(option.startby) || atoi(option.startby) < 0)
+    if (strlen(option.startby) < 1 || !is_integer(option.startby) || atoi(option.startby) < 0)
         return 0;
 
-    if (!is_integer(option.length) || atoi(option.length) < 1 || atoi(option.length) > 100)
+    if (strlen(option.length) < 1 || !is_integer(option.length) || atoi(option.length) < 1 || atoi(option.length) > 100)
         return 0;
 
     int time_result[3];
