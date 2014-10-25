@@ -1,3 +1,5 @@
+#include <sys/statvfs.h>
+
 
 int is_integer(char* input){
     while (*input){
@@ -40,9 +42,35 @@ void split_time(char* input, int result[]){
     result[2] = atoi(hour);
 }
 
-void time_formatting(double input, char * output){
+char* time_formatting(double input, char * output){
     int hours = input / 60 / 60;
     int minutes = (int)(input / 60) % 60;
     int seconds = (int)input % 60;
     snprintf(output, 50, "%i:%02i:%02i", hours, minutes, seconds);
+    return output;
 }
+
+char* readable_fs(double size, char * output) {
+    int i = 0;
+    const char* units[] = {"B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"};
+    while (size > 1024) {
+        size /= 1024;
+        i++;
+    }
+    snprintf(output, 50, "%.*f %s", i, size, units[i]);
+    return output;
+}
+
+char* disk_left(char * output){
+    snprintf(output, 50, "bla");
+    struct statvfs buf;
+    if (!statvfs("/home/", &buf)) {
+        unsigned long free;
+        free = buf.f_bsize * buf.f_bfree;
+        readable_fs((double)free, output);
+    }
+    return output;
+}
+
+
+

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <time.h>
 #include "utils.c"
+#include "imagegrab.h"
 
 
 
@@ -34,7 +35,7 @@ void mode_scan(){
         newtInit();
     
         if (haserror)
-            newtPushHelpLine("Option are not valid");        
+            newtPushHelpLine("Option are invalid");
 
         newtGetScreenSize(&cols, &rows);
         newtOpenWindow((cols - 72)/2, 5, 72, 20, "Preparation to scan a super 8mm movie");
@@ -125,8 +126,9 @@ void start_scanner(Option option){
     newtComponent scale_entry = newtScale(1, 17, 70, 10);
 
     newtComponent uptime_entry = newtTextbox(1, 1, 70, 10, NEWT_FLAG_WRAP);
-
-    newtFormAddComponents(form, scale_entry, uptime_entry, NULL);
+    newtComponent diskleft_entry = newtTextbox(1, 2, 70, 10, NEWT_FLAG_WRAP);
+    
+    newtFormAddComponents(form, scale_entry, uptime_entry, diskleft_entry, NULL);
 
 
     time_t uptime = time(NULL);
@@ -134,14 +136,17 @@ void start_scanner(Option option){
     int i;
     for(i = 1; i< 10; i++){
         newtScaleSet(scale_entry, i);
-        char hr_uptime[120];
+        char settext[120];
         char output[50];
         time_t uptime_now = time(NULL);
         time_formatting((double)(uptime_now - uptime), output);
-        snprintf(hr_uptime, 120, "Uptime: %s", output);
-        newtTextboxSetText(uptime_entry, hr_uptime);
+        snprintf(settext, 120, "Uptime: %s", output);
+        newtTextboxSetText(uptime_entry, settext);
+        snprintf(settext, 120, "Disk left: %s", disk_left(output));
+        newtTextboxSetText(diskleft_entry, settext);
         newtDrawForm(form);
-	    newtRefresh();
+        newtRefresh();
+        grab_image(1, "/home/sriolo/development/raspberrypi/superPi8");
         sleep(1);
     }
     
