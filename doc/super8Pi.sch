@@ -1,0 +1,43 @@
+v 20130925 2
+C 40000 40000 0 0 0 title-B.sym
+C 45400 47300 1 0 0 resistor-2.sym
+{
+T 45800 47650 5 10 0 0 0 0 1
+device=RESISTOR
+T 45600 47600 5 10 1 1 0 0 1
+refdes=R?
+}
+C 45400 46500 1 0 0 resistor-2.sym
+{
+T 45800 46850 5 10 0 0 0 0 1
+device=RESISTOR
+T 45600 46800 5 10 1 1 0 0 1
+refdes=R?
+}
+C 45400 45500 1 0 0 resistor-2.sym
+{
+T 45800 45850 5 10 0 0 0 0 1
+device=RESISTOR
+T 45600 45800 5 10 1 1 0 0 1
+refdes=R?
+}
+T 50900 40900 9 18 1 0 0 0 1
+super8Pi
+T 54300 40100 9 10 1 0 0 0 1
+Samuel Riolo
+C 42000 47200 1 0 0 dc_motor-1.sym
+{
+T 42400 48200 5 10 0 0 0 0 1
+device=DC_MOTOR
+T 42500 47800 5 10 1 1 0 0 1
+refdes=M?
+}
+C 42000 45400 1 0 0 omron-G5V-1-DCx-1.sym
+{
+T 42100 46600 5 6 0 1 0 0 1
+device=OMRON_G2R-24-DC5
+T 42300 46100 5 8 1 1 0 1 1
+device=OMRON G5V-1
+T 42300 46200 5 10 1 1 0 0 1
+refdes=K?
+}
