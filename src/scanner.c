@@ -3,8 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
+#include <pthread.h>
 #include "utils.c"
-#include "imagegrab.h"
+#include "capture.h"
 
 
 
@@ -16,6 +18,10 @@ typedef struct Option {
     int type;
 } Option;
 
+
+double mode_move_finish;
+pthread_t mode_move_thread = NULL;
+pthread_mutex_t mode_move_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void mode_scan(){
     newtComponent form,
@@ -114,7 +120,7 @@ void start_scanner(Option option){
 
     newtCls();
     newtInit();
-
+    capture_open();
 
     newtGetScreenSize(&cols, &rows);
     char title[120];
@@ -136,6 +142,7 @@ void start_scanner(Option option){
     int i;
     for(i = 1; i< 10; i++){
         newtScaleSet(scale_entry, i);
+        char path[320];
         char settext[120];
         char output[50];
         time_t uptime_now = time(NULL);
@@ -146,19 +153,54 @@ void start_scanner(Option option){
         newtTextboxSetText(diskleft_entry, settext);
         newtDrawForm(form);
         newtRefresh();
-        grab_image(1, "/home/sriolo/development/raspberrypi/superPi8");
+        snprintf(path, 320, "/home/sriolo/develop/c/superPi8/%05d.raw", i);
+        FILE *fd = fopen(path,  "wa");
+        capture_image(1, fd);
+        fclose(fd);
         sleep(1);
     }
     
+    capture_close();
     newtFormDestroy(form);
     newtFinished();
 }
 
+void move_move_stopping(){
+    double delay = 0;
+    do{
+        pthread_mutex_lock(&mode_move_mutex);
+        delay = mode_move_finish - timestamp_mili();
+        pthread_mutex_unlock(&mode_move_mutex);
+        usleep((int)(delay*1000000));
+    } while(delay > 0);
+    pthread_mutex_lock(&mode_move_mutex);
+    mode_move_thread = NULL;
+    printf("thread signal stop / signal to gpio");
+    pthread_mutex_unlock(&mode_move_mutex);
+}
+
 void mode_move(){
-    
+    printw("Press spacebar to move or ESC to come back to main menu");
+    while(1){
+        char key = getchar();
+        // ESC
+        if (key == 27){
+            return;
+        }
+        // spacebar    
+        if (key == 32){
+            pthread_mutex_lock(&mode_move_mutex);
+            mode_move_finish = timestamp_mili() + 1.0;
+            if (!mode_move_thread){
+                pthread_create(&mode_move_thread, NULL, &move_move_stopping, NULL);
+            }
+            pthread_mutex_unlock(&mode_move_mutex);
+        }
+    }
 }
 
 
 void mode_step(){
     
 }
+

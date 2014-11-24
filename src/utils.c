@@ -1,3 +1,4 @@
+#include <sys/timeb.h>
 #include <sys/statvfs.h>
 
 
@@ -72,5 +73,9 @@ char* disk_left(char * output){
     return output;
 }
 
-
+double timestamp_mili(){
+    struct timeb tmb;
+    ftime(&tmb);
+    return ((double)tmb.time) + ((double)tmb.millitm) / 1000.0;
+}
 
