@@ -11,6 +11,7 @@ void mode_quit(){
 
 int main(void) {
     
+    scanner_init();
     if(gpio_init()){
         mode_quit();    
     }

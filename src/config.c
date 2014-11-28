@@ -2,6 +2,7 @@
 #define VIDEO_DEV "/dev/video0"
 #define FRAME_COUNT 3
 #define FRAME_SKIP 2
+#define MAX_MOTOR_SPAN 4
 
 // http://wiringpi.com/wp-content/uploads/2013/03/pins.pdf 
 #define GPIO_MOTOR 0   /* Motor controller GIPOP 17 PIN 11*/

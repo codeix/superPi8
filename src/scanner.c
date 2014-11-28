@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <wiringPi.h>
+#include <semaphore.h>
 #include "utils.c"
 #include "config.c"
 #include "capture.h"
@@ -24,6 +25,8 @@ typedef void (*functiontype)();
 functiontype edge_falling_pos_func = NULL;
 functiontype edge_falling_watch_func = NULL;
 
+struct timespec mode_step_sem_ts;
+sem_t mode_step_sem;
 pthread_mutex_t edge_falling_pos_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t edge_falling_watch_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -173,9 +176,9 @@ void start_scanner(Option option){
     newtFinished();
 }
 
-void move_move_stopping(){
+void mode_move_stopping(){
     int delay = 0;
-    do{
+    do {
         usleep(delay);
         pthread_mutex_lock(&mode_move_mutex);
         delay = (int)((mode_move_finish - timestamp_mili())*1000000);
@@ -200,7 +203,7 @@ void mode_move(){
             mode_move_finish = timestamp_mili() + 0.4;
             if (!mode_move_thread){
                 digitalWrite(GPIO_MOTOR, 1);
-                pthread_create(&mode_move_thread, NULL, &move_move_stopping, NULL);
+                pthread_create(&mode_move_thread, NULL, &mode_move_stopping, NULL);
             }
             pthread_mutex_unlock(&mode_move_mutex);
         }
@@ -209,11 +212,22 @@ void mode_move(){
 
 void mode_step_stop(){
     digitalWrite(GPIO_MOTOR, 0);
+    sem_post(&mode_step_sem);
 }
+
 
 void mode_step(){
     edge_falling_pos_func = &mode_step_stop;
     digitalWrite(GPIO_MOTOR, 1);
+    struct timeb tmb;
+    ftime(&tmb);
+    mode_step_sem_ts.tv_sec = MAX_MOTOR_SPAN + tmb.time;
+    sem_timedwait(&mode_step_sem, &mode_step_sem_ts);
+    if (digitalRead(GPIO_MOTOR)){
+        digitalWrite(GPIO_MOTOR, 0);
+        printf("Waiting too long of postion signal");
+        exit(1);
+    }
 }
 
 
@@ -231,6 +245,12 @@ void edge_falling_handler_watch(){
         edge_falling_watch_func();
     edge_falling_watch_func = NULL;
     pthread_mutex_unlock(&edge_falling_watch_mutex);
+}
+
+
+int scanner_init(){
+    sem_init(&mode_step_sem, 0, 0);
+    return 0;
 }
 
 
