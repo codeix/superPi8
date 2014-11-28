@@ -5,9 +5,10 @@
 #include <time.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <wiringPi.h>
 #include "utils.c"
+#include "config.c"
 #include "capture.h"
-
 
 
 typedef struct Option {
@@ -18,6 +19,13 @@ typedef struct Option {
     int type;
 } Option;
 
+
+typedef void (*functiontype)();
+functiontype edge_falling_pos_func = NULL;
+functiontype edge_falling_watch_func = NULL;
+
+pthread_mutex_t edge_falling_pos_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t edge_falling_watch_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 double mode_move_finish;
 pthread_t mode_move_thread = NULL;
@@ -153,7 +161,7 @@ void start_scanner(Option option){
         newtTextboxSetText(diskleft_entry, settext);
         newtDrawForm(form);
         newtRefresh();
-        snprintf(path, 320, "/home/sriolo/develop/c/superPi8/%05d.raw", i);
+        snprintf(path, 320, "/home/pi/image/%05d.raw", i);
         FILE *fd = fopen(path,  "wa");
         capture_image(1, fd);
         fclose(fd);
@@ -166,21 +174,20 @@ void start_scanner(Option option){
 }
 
 void move_move_stopping(){
-    double delay = 0;
+    int delay = 0;
     do{
+        usleep(delay);
         pthread_mutex_lock(&mode_move_mutex);
-        delay = mode_move_finish - timestamp_mili();
+        delay = (int)((mode_move_finish - timestamp_mili())*1000000);
         pthread_mutex_unlock(&mode_move_mutex);
-        usleep((int)(delay*1000000));
     } while(delay > 0);
     pthread_mutex_lock(&mode_move_mutex);
     mode_move_thread = NULL;
-    printf("thread signal stop / signal to gpio");
+    digitalWrite(GPIO_MOTOR, 0);
     pthread_mutex_unlock(&mode_move_mutex);
 }
 
 void mode_move(){
-    printw("Press spacebar to move or ESC to come back to main menu");
     while(1){
         char key = getchar();
         // ESC
@@ -190,8 +197,9 @@ void mode_move(){
         // spacebar    
         if (key == 32){
             pthread_mutex_lock(&mode_move_mutex);
-            mode_move_finish = timestamp_mili() + 1.0;
+            mode_move_finish = timestamp_mili() + 0.4;
             if (!mode_move_thread){
+                digitalWrite(GPIO_MOTOR, 1);
                 pthread_create(&mode_move_thread, NULL, &move_move_stopping, NULL);
             }
             pthread_mutex_unlock(&mode_move_mutex);
@@ -199,8 +207,47 @@ void mode_move(){
     }
 }
 
+void mode_step_stop(){
+    digitalWrite(GPIO_MOTOR, 0);
+}
 
 void mode_step(){
-    
+    edge_falling_pos_func = &mode_step_stop;
+    digitalWrite(GPIO_MOTOR, 1);
 }
+
+
+void edge_falling_handler_pos(){
+    pthread_mutex_lock(&edge_falling_pos_mutex);
+    if(edge_falling_pos_func)
+        edge_falling_pos_func();
+    edge_falling_pos_func = NULL;
+    pthread_mutex_unlock(&edge_falling_pos_mutex);
+}
+
+void edge_falling_handler_watch(){
+    pthread_mutex_lock(&edge_falling_watch_mutex);
+    if(edge_falling_watch_func)
+        edge_falling_watch_func();
+    edge_falling_watch_func = NULL;
+    pthread_mutex_unlock(&edge_falling_watch_mutex);
+}
+
+
+int gpio_init(){
+    if(wiringPiSetup() == -1){
+        printf("Error could not initalize wiringPi\n");
+        return 1;
+    }
+
+    pinMode(GPIO_MOTOR, OUTPUT);
+	pinMode(GPIO_POS, INPUT);
+    pinMode(GPIO_WATCH, INPUT);
+    pullUpDnControl(GPIO_POS, PUD_DOWN);
+    pullUpDnControl(GPIO_WATCH, PUD_DOWN);
+    wiringPiISR(GPIO_POS, INT_EDGE_FALLING, &edge_falling_handler_pos);
+    wiringPiISR(GPIO_WATCH, INT_EDGE_FALLING, &edge_falling_handler_watch);
+    return 0;
+}
+
 

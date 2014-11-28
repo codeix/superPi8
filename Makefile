@@ -1,7 +1,7 @@
 CC = gcc
 FILES = src/main.c src/scanner.c src/capture.c
 OUT_EXE = superPi8 
-LIBS = -lncurses -lnewt -lv4l2 -lpthread
+LIBS = -lncurses -lnewt -lv4l2 -lpthread -lwiringPi
 MACROS = -DIO_MMA
 
 
