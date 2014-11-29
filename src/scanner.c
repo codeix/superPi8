@@ -35,8 +35,10 @@ double mode_move_finish;
 pthread_t mode_move_thread = NULL;
 pthread_mutex_t mode_move_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-sem_t scan_watch_sem;
-pthread_mutex_t scan_watch_mutex = PTHREAD_MUTEX_INITIALIZER;
+//sem_t scan_watch_sem;
+int scan_onwait_flag;
+pthread_cond_t scan_onwait_con=PTHREAD_COND_INITIALIZER;
+pthread_mutex_t scan_onwait_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void mode_scan(){
     newtComponent form,
@@ -143,8 +145,16 @@ struct start_runner_args {
     int start_image_pos;
     int end_image_pos;
     int stop_next_possible;
+    time_t waittime;
     Option option;
 };
+
+
+void start_scanner_watch(){
+    pthread_mutex_lock(&scan_onwait_mutex);
+    scan_onwait_flag = 1;
+    pthread_mutex_unlock(&scan_onwait_mutex);
+}
 
 
 void start_scan_runner(void *arguments){
@@ -157,22 +167,30 @@ void start_scan_runner(void *arguments){
         mkdir(path_dir, 0700);
     }
     while(args->current_image_pos++ <= args->end_image_pos){
-        if (args->stop_next_possible)
-            break;
-        sem_wait(&scan_watch_sem);
-        pthread_mutex_lock(&scan_watch_mutex);
+        pthread_mutex_lock(&edge_falling_pos_mutex);
+        edge_falling_watch_func = &start_scanner_watch;
+        pthread_mutex_unlock(&edge_falling_pos_mutex);
+        pthread_mutex_lock(&scan_onwait_mutex);
+        if (scan_onwait_flag){
+            time_t uptime = time(NULL);
+            pthread_cond_wait(&scan_onwait_con, &scan_onwait_mutex);
+            time_t uptime_now = time(NULL);
+            args->waittime += uptime_now - uptime;
+        }
+        if (args->stop_next_possible) {
+            pthread_mutex_unlock(&scan_onwait_mutex);
+            return;
+        }
+        pthread_mutex_unlock(&scan_onwait_mutex);
+
         mode_step();
         snprintf(path_file, 320, "%s/%05d.raw", path_dir, args->current_image_pos);
         FILE *fd = fopen(path_file,  "wa");
         capture_image(1, fd);
         fclose(fd);
-        sem_post(&scan_watch_sem);
-        pthread_mutex_unlock(&scan_watch_mutex);
     }
     newtTextboxSetText(args->message_entry, "Gratulation you scan is ready");
 }
-
-
 
 void start_display_runner(void *arguments) {    
     capture_open();
@@ -189,38 +207,30 @@ void start_display_runner(void *arguments) {
         time_formatting((double)(uptime_now - uptime), output);
         snprintf(settext, 120, "Uptime: %s", output);
         newtTextboxSetText(args->uptime_entry, settext);
-        double time_per_image = ((double)(uptime_now - uptime)/(double)(args->current_image_pos - args->start_image_pos));
-        time_formatting((double)(time_per_image * (float)(args->end_image_pos - args->current_image_pos)), output);
-        snprintf(settext, 120, "Apporximate: %s", output);
-        newtTextboxSetText(args->approximate_entry, settext);
+        if(!scan_onwait_flag){
+            double time_per_image = ((double)(uptime_now - uptime - args->waittime)/(double)(args->current_image_pos - args->start_image_pos));
+            time_formatting((double)(time_per_image * (float)(args->end_image_pos - args->current_image_pos)), output);
+            snprintf(settext, 120, "Apporximate: %s", output);
+            newtTextboxSetText(args->approximate_entry, settext);
+        }
         snprintf(settext, 120, "Disk left: %s", disk_left(output, IMAGE_PATH));
         newtTextboxSetText(args->diskleft_entry, settext);
         snprintf(settext, 120, "Current Image: %i/%i", args->current_image_pos, args->end_image_pos);
         newtTextboxSetText(args->current_pos_entry, settext);
-
-        int v;
-        sem_getvalue(&scan_watch_sem, &v);
-        if (v > 0)
-            newtTextboxSetText(args->message_entry, "");
-        else
+        if (scan_onwait_flag)
             newtTextboxSetText(args->message_entry, "scan is temporary stopped");
+        else
+            newtTextboxSetText(args->message_entry, " ");
 
         newtRefresh();
-        if(pthread_kill(start_scan_runner_thread, 0))
+        if(args->stop_next_possible){
+            pthread_join(start_scan_runner_thread, NULL);
             break;
+        }
+        usleep(200000);
     }
     capture_close();
 }
-
-void start_scanner_watch(){
-    pthread_mutex_lock(&scan_watch_mutex);
-    int v;
-    sem_getvalue(&scan_watch_sem, &v);
-    if (v > 0)
-        sem_wait(&scan_watch_sem);
-    pthread_mutex_unlock(&scan_watch_mutex);
-}
-
 
 void start_scanner(Option option){
 
@@ -251,7 +261,8 @@ void start_scanner(Option option){
     newtComponent button_finish = newtButton(60, 15, "Finsh");
     newtFormAddComponents(form, button_cancel, button_wait, button_finish, NULL);
 
-    edge_falling_watch_func = &start_scanner_watch;
+    scan_onwait_flag = 0;
+
     struct start_runner_args args;
     args.form = form;
     args.scale_entry = scale_entry;
@@ -263,7 +274,8 @@ void start_scanner(Option option){
     args.stop_next_possible = 0;
     args.button_wait = button_wait;
     args.option = option;
-    sem_init(&scan_watch_sem, 0, 1);
+    args.waittime = 0;
+
     newtDrawForm(form);
     newtRefresh();
 
@@ -282,15 +294,16 @@ void start_scanner(Option option){
         struct newtExitStruct es;
         newtFormRun(form, &es);
 
+        pthread_mutex_lock(&scan_onwait_mutex);
         if (es.u.co == button_cancel || es.u.co == button_finish) {
-            pthread_mutex_lock(&scan_watch_mutex);
-            sem_post(&scan_watch_sem);
             args.stop_next_possible = 1;
-            pthread_mutex_unlock(&scan_watch_mutex);
+            scan_onwait_flag = 0;
+            edge_falling_watch_func = NULL;
+            pthread_mutex_unlock(&scan_onwait_mutex);
+            pthread_cond_signal(&scan_onwait_con);
             pthread_join(start_display_runner_thread, NULL);
             newtFormDestroy(form);
             newtFinished();
-            edge_falling_watch_func = NULL;
             if (es.u.co == button_finish){
                 char path_file[320];
                 struct stat st = {0};
@@ -301,15 +314,14 @@ void start_scanner(Option option){
             return;
         }
         if (es.u.co == button_wait) {
-            pthread_mutex_lock(&scan_watch_mutex);
-            int v;
-            sem_getvalue(&scan_watch_sem, &v);
-            if (v > 0)
-                sem_wait(&scan_watch_sem);
-            else
-                sem_post(&scan_watch_sem);
-            pthread_mutex_unlock(&scan_watch_mutex);
+            if (scan_onwait_flag){
+                scan_onwait_flag = 0;
+                pthread_cond_signal(&scan_onwait_con);
+            } else {
+                scan_onwait_flag = 1;
+            }
         }
+        pthread_mutex_unlock(&scan_onwait_mutex);
     }
 }
 
@@ -355,7 +367,9 @@ void mode_step_stop(){
 }
 
 void mode_step(){
+    pthread_mutex_lock(&edge_falling_pos_mutex);
     edge_falling_pos_func = &mode_step_stop;
+    pthread_mutex_unlock(&edge_falling_pos_mutex);    
     digitalWrite(GPIO_MOTOR, 1);
     struct timeb tmb;
     ftime(&tmb);
