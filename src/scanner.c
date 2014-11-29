@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <wiringPi.h>
 #include <semaphore.h>
+#include <sys/stat.h>
 #include "utils.c"
 #include "config.c"
 #include "capture.h"
@@ -133,31 +134,42 @@ struct start_runner_args {
     newtComponent form;
     newtComponent scale_entry;
     newtComponent uptime_entry;
+    newtComponent approximate_entry;
     newtComponent diskleft_entry;
+    newtComponent message_entry;
+    newtComponent current_pos_entry;
     newtComponent button_wait;
     int current_image_pos;
     int start_image_pos;
+    int end_image_pos;
     int stop_next_possible;
+    Option option;
 };
 
 
 void start_scan_runner(void *arguments){
     struct start_runner_args *args = (struct start_runner_args*)arguments;
-    char path[320];
-    int i = 0;    
-    while(++i){
+    char path_dir[320];
+    char path_file[320];
+    struct stat st = {0};
+    snprintf(path_dir, 320, "%s/%s", IMAGE_PATH, args->option.name);
+    if (stat(path_dir, &st) == -1) {
+        mkdir(path_dir, 0700);
+    }
+    while(args->current_image_pos++ <= args->end_image_pos){
         if (args->stop_next_possible)
             break;
         sem_wait(&scan_watch_sem);
         pthread_mutex_lock(&scan_watch_mutex);
         mode_step();
-        snprintf(path, 320, "%s/%05d.raw", IMAGE_PATH, i);
-        FILE *fd = fopen(path,  "wa");
+        snprintf(path_file, 320, "%s/%05d.raw", path_dir, args->current_image_pos);
+        FILE *fd = fopen(path_file,  "wa");
         capture_image(1, fd);
         fclose(fd);
         sem_post(&scan_watch_sem);
         pthread_mutex_unlock(&scan_watch_mutex);
     }
+    newtTextboxSetText(args->message_entry, "Gratulation you scan is ready");
 }
 
 
@@ -170,15 +182,29 @@ void start_display_runner(void *arguments) {
     pthread_create(&start_scan_runner_thread, NULL, &start_scan_runner, args);
     int i;
     while(1){
-        newtScaleSet(args->scale_entry, i);
+        newtScaleSet(args->scale_entry, (long)((float)(args->current_image_pos)/(float)(args->end_image_pos) * 100.0));
         char settext[120];
         char output[50];
         time_t uptime_now = time(NULL);
         time_formatting((double)(uptime_now - uptime), output);
         snprintf(settext, 120, "Uptime: %s", output);
         newtTextboxSetText(args->uptime_entry, settext);
-        snprintf(settext, 120, "Disk left: %s", disk_left(output));
+        double time_per_image = ((double)(uptime_now - uptime)/(double)(args->current_image_pos - args->start_image_pos));
+        time_formatting((double)(time_per_image * (float)(args->end_image_pos - args->current_image_pos)), output);
+        snprintf(settext, 120, "Apporximate: %s", output);
+        newtTextboxSetText(args->approximate_entry, settext);
+        snprintf(settext, 120, "Disk left: %s", disk_left(output, IMAGE_PATH));
         newtTextboxSetText(args->diskleft_entry, settext);
+        snprintf(settext, 120, "Current Image: %i/%i", args->current_image_pos, args->end_image_pos);
+        newtTextboxSetText(args->current_pos_entry, settext);
+
+        int v;
+        sem_getvalue(&scan_watch_sem, &v);
+        if (v > 0)
+            newtTextboxSetText(args->message_entry, "");
+        else
+            newtTextboxSetText(args->message_entry, "scan is temporary stopped");
+
         newtRefresh();
         if(pthread_kill(start_scan_runner_thread, 0))
             break;
@@ -207,38 +233,56 @@ void start_scanner(Option option){
     char title[120];
     strcpy(title, "Scanning: ");
     strcat(title, option.name);
-    newtOpenWindow((cols - 72)/2, 5, 72, 20, title);
+    newtOpenWindow((cols - 72)/2, 5, 72, 22, title);
 
     newtComponent form = newtForm(NULL, NULL, 0);
-    newtComponent scale_entry = newtScale(1, 13, 70, 10);
+    newtComponent message_entry = newtTextbox(1, 12, 70, 10, NEWT_FLAG_WRAP);    
+    newtComponent scale_entry = newtScale(1, 13, 70, 100);
 
     newtComponent uptime_entry = newtTextbox(1, 1, 70, 10, NEWT_FLAG_WRAP);
-    newtComponent diskleft_entry = newtTextbox(1, 2, 70, 10, NEWT_FLAG_WRAP);
-    
-    newtFormAddComponents(form, scale_entry, uptime_entry, diskleft_entry, NULL);
+    newtComponent approximate_entry = newtTextbox(1, 2, 70, 10, NEWT_FLAG_WRAP);
+    newtComponent diskleft_entry = newtTextbox(1, 3, 70, 10, NEWT_FLAG_WRAP);
+    newtComponent current_pos_entry = newtTextbox(1, 4, 70, 10, NEWT_FLAG_WRAP);
 
-    newtComponent button_cancel = newtButton(19, 15, "Cancel");
-    newtComponent button_wait = newtButton(44, 15, "Wait/Continue");
-    newtFormAddComponents(form, button_cancel, button_wait, NULL);
+    newtFormAddComponents(form, message_entry, scale_entry, uptime_entry, approximate_entry, diskleft_entry, current_pos_entry, NULL);
+
+    newtComponent button_cancel = newtButton(1, 15, "Cancel");
+    newtComponent button_wait = newtButton(34, 15, "Wait/Continue");
+    newtComponent button_finish = newtButton(60, 15, "Finsh");
+    newtFormAddComponents(form, button_cancel, button_wait, button_finish, NULL);
 
     edge_falling_watch_func = &start_scanner_watch;
     struct start_runner_args args;
     args.form = form;
     args.scale_entry = scale_entry;
+    args.message_entry = message_entry;
     args.uptime_entry = uptime_entry;
+    args.approximate_entry = approximate_entry;
     args.diskleft_entry = diskleft_entry;
+    args.current_pos_entry = current_pos_entry;
     args.stop_next_possible = 0;
     args.button_wait = button_wait;
+    args.option = option;
     sem_init(&scan_watch_sem, 0, 1);
     newtDrawForm(form);
     newtRefresh();
+
+    args.current_image_pos = atoi(option.startby);
+    args.start_image_pos = args.current_image_pos;
+    if(option.type)
+        args.end_image_pos = atof(option.length) * 1000.0 / 4.01;
+    else
+        args.end_image_pos = atof(option.length) * 1000.0 / 3.3;
+    
+
     pthread_t start_display_runner_thread;
     pthread_create(&start_display_runner_thread, NULL, &start_display_runner, &args);
 
     while(1){
         struct newtExitStruct es;
         newtFormRun(form, &es);
-        if (es.u.co == button_cancel){
+
+        if (es.u.co == button_cancel || es.u.co == button_finish) {
             pthread_mutex_lock(&scan_watch_mutex);
             sem_post(&scan_watch_sem);
             args.stop_next_possible = 1;
@@ -246,6 +290,14 @@ void start_scanner(Option option){
             pthread_join(start_display_runner_thread, NULL);
             newtFormDestroy(form);
             newtFinished();
+            edge_falling_watch_func = NULL;
+            if (es.u.co == button_finish){
+                char path_file[320];
+                struct stat st = {0};
+                snprintf(path_file, 320, "%s/%s/ready", IMAGE_PATH, option.name);
+                FILE *fd = fopen(path_file,  "wa");
+                fclose(fd);
+            }
             return;
         }
         if (es.u.co == button_wait) {
