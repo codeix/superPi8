@@ -161,8 +161,11 @@ void start_scan_runner(void *arguments){
     struct start_runner_args *args = (struct start_runner_args*)arguments;
     char path_dir[320];
     char path_file[320];
+    char path_symlink[320];
+    char path_source[320];
     struct stat st = {0};
     snprintf(path_dir, 320, "%s/%s", IMAGE_PATH, args->option.name);
+    snprintf(path_symlink, 320, "%s/current", path_dir);
     if (stat(path_dir, &st) == -1) {
         mkdir(path_dir, 0700);
     }
@@ -188,6 +191,9 @@ void start_scan_runner(void *arguments){
         FILE *fd = fopen(path_file,  "wa");
         capture_image(1, fd);
         fclose(fd);
+        snprintf(path_source, 320, "%05d.raw", args->current_image_pos);
+        unlink(path_symlink);
+        symlink(path_source, path_symlink);
     }
     newtTextboxSetText(args->message_entry, "Gratulation you scan is ready");
 }
@@ -392,8 +398,11 @@ void edge_falling_handler_pos(){
 
 void edge_falling_handler_watch(){
     pthread_mutex_lock(&edge_falling_watch_mutex);
-    if(edge_falling_watch_func)
-        edge_falling_watch_func();
+    if(edge_falling_watch_func) {
+        usleep(10000);
+        if(!digitalRead(GPIO_WATCH))
+            edge_falling_watch_func();
+    }
     edge_falling_watch_func = NULL;
     pthread_mutex_unlock(&edge_falling_watch_mutex);
 }
