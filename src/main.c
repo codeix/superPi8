@@ -11,6 +11,11 @@ void mode_quit(){
 
 int main(void) {
     
+    scanner_init();
+    if(gpio_init()){
+        mode_quit();    
+    }
+
     WINDOW *win = initscr();			
     char usermode[10];
     bool error = 0;
@@ -32,6 +37,7 @@ int main(void) {
             mode_step();
         }
         else if (strcmp(usermode, "move")==0) {
+            printf("Press spacebar to move or ESC to come back to main menu");
             mode_move();
         }
         else if (strcmp(usermode, "quit")==0) {

@@ -14,8 +14,10 @@
 
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 
+#define WIDTH 1280
+#define HEIGHT 1024
 
-# fswebcam -d RAW:test.raw  --jpeg 100 -r640x480 -S 0 -f 0 -p YUYV test.jpeg
+// fswebcam -d RAW:test.raw  --jpeg 100 -r640x480 -S 0 -f 0 -p YUYV test.jpeg
 
 static int xioctl(int fd, int request, void* argp)
 {
@@ -29,7 +31,7 @@ static int xioctl(int fd, int request, void* argp)
 
 static void errno_exit(const char* s)
 {
-//     fprintf(stderr, "%s error %d, %s\n", s, errno, strerror (errno));
+    fprintf(stderr, "%s error %d, %s\n", s, errno, strerror (errno));
     exit(EXIT_FAILURE);
 }
 
@@ -54,55 +56,18 @@ int main(int argc, char const *argv[])
     size = s.st_size;
 
     
-    struct v4l2_capability cap;
-    struct v4l2_cropcap cropcap;
-    struct v4l2_crop crop;
     
-    
-    if (-1 == xioctl(fd, VIDIOC_QUERYCAP, &cap)) {
-        if (EINVAL == errno) {
-//             fprintf(stderr, "%s is no V4L2 device\n",argv[1]);
-            exit(EXIT_FAILURE);
-        } else {
-            errno_exit("VIDIOC_QUERYCAP");
-        }
-    }
-    
-    
-    /* Select video input, video standard and tune here. */
-    CLEAR(cropcap);
-    
-    cropcap.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    
-    if (0 == xioctl(fd, VIDIOC_CROPCAP, &cropcap)) {
-        crop.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        crop.c = cropcap.defrect; /* reset to default */
-        
-        if (-1 == xioctl(fd, VIDIOC_S_CROP, &crop)) {
-            switch (errno) {
-                case EINVAL:
-                    /* Cropping not supported. */
-                    break;
-                default:
-                    /* Errors ignored. */
-                    break;
-            }
-        }
-    } else {        
-        /* Errors ignored. */
-    }
     
     // v4l2_format
     struct v4l2_format fmt;
     CLEAR(fmt);
     fmt.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    fmt.fmt.pix.width       = 640; 
-    fmt.fmt.pix.height      = 480;
+    fmt.fmt.pix.width       = WIDTH; 
+    fmt.fmt.pix.height      = HEIGHT;
     fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
-    fmt.fmt.pix.field       = V4L2_FIELD_INTERLACED;
+    fmt.fmt.pix.field       = V4L2_FIELD_NONE;
     if (-1 == xioctl(fd, VIDIOC_S_FMT, &fmt))
         errno_exit("VIDIOC_S_FMT");
-    
     
     struct v4l2_requestbuffers req;
     
@@ -118,6 +83,23 @@ int main(int argc, char const *argv[])
     
 //     buffers = calloc(req.count, sizeof(*buffers));
     
+    struct v4l2_fract frac;
+    CLEAR(frac);
+    frac.numerator = 10;
+    frac.denominator = 10;
+
+    struct v4l2_captureparm parm;
+    CLEAR(parm);
+    parm.capturemode = V4L2_MODE_HIGHQUALITY;
+    parm.capability = V4L2_CAP_TIMEPERFRAME;
+    parm.timeperframe = frac;
+
+    struct v4l2_streamparm sparm;
+    CLEAR(sparm);
+    sparm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    sparm.parm.capture = parm;
+    if (-1 == xioctl(fd, VIDIOC_S_PARM, &sparm))
+            errno_exit("VIDIOC_S_PARM");
 
     for (n_buffers = 0; n_buffers < req.count; ++n_buffers) {
         
@@ -125,7 +107,7 @@ int main(int argc, char const *argv[])
         
         buf.type        = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory      = V4L2_MEMORY_MMAP;
-        buf.index       = 3;
+
 
         
         xioctl(fd, VIDIOC_QUERYBUF, &buf);
@@ -163,11 +145,13 @@ int main(int argc, char const *argv[])
     }
     
 
-    
-    
+
+FILE *wfd;
+wfd = fopen("test.raw",  "wa");    
+int t;
+for (t = 0; t < 50; t++){
 for (;;){
-    
-    
+
     fd_set fds;
     struct timeval tv;
     int r;
@@ -178,14 +162,17 @@ for (;;){
     /* Timeout. */
     tv.tv_sec = 2;
     tv.tv_usec = 0;
-    
-    r = select(fd + 1, &fds, NULL, NULL, &tv);
 
+    /* filedescriptor wait that nobody is writing */
+    r = select(fd + 1, &fds, NULL, NULL, &tv);
 
     CLEAR (buf);
    
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
+    
+
+
     
     if (-1 == xioctl(fd, VIDIOC_DQBUF, &buf)) {
         switch (errno) {
@@ -203,21 +190,28 @@ for (;;){
     
     size = buf.length;
     unsigned char *j;
-//      printf("traaa %lu and index: %lu>>", buffers[buf.index].start, buf.index);
+
     assert (buf.index < n_buffers);
-    if (buffers[buf.index].start == 0)
+
+        printf(" blaa : %u/%u n ", buffers[buf.index].start, buf.index);
+
+    if (buf.index != 3)
         continue;
-    fwrite(buffers[buf.index].start, sizeof(char), 680*480*24, stdout);
+
+
+    fwrite(buffers[buf.index].start, sizeof(char)*2, WIDTH*HEIGHT, wfd);
+
+
     if (-1 == xioctl(fd, VIDIOC_QBUF, &buf))
         errno_exit("VIDIOC_QBUF");
-    
 
+    break;
 }
     
-    
+ }   
     
 
-
+fclose(wfd);
 
     return 0;
 }

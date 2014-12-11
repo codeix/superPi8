@@ -1,3 +1,4 @@
+#include <sys/timeb.h>
 #include <sys/statvfs.h>
 
 
@@ -61,16 +62,19 @@ char* readable_fs(double size, char * output) {
     return output;
 }
 
-char* disk_left(char * output){
-    snprintf(output, 50, "bla");
+char* disk_left(char * output, char * path){
     struct statvfs buf;
-    if (!statvfs("/home/", &buf)) {
-        unsigned long free;
-        free = buf.f_bsize * buf.f_bfree;
+    if (!statvfs(path, &buf)) {
+        unsigned long long free;
+        free = (long long)buf.f_bsize * (long long)buf.f_bavail;
         readable_fs((double)free, output);
     }
     return output;
 }
 
-
+double timestamp_mili(){
+    struct timeb tmb;
+    ftime(&tmb);
+    return ((double)tmb.time) + ((double)tmb.millitm) / 1000.0;
+}
 
