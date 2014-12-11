@@ -36,8 +36,10 @@ cd wiringPi
 git pull origin
 cd wiringPi
 ./build
-for more information: http://wiringpi.com/download-and-install/
 ```
+
+for more information: http://wiringpi.com/download-and-install/
+
 Install libraries:
 ------------------
 ``` bash
